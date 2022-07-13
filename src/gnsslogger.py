@@ -5,7 +5,7 @@ Module to process log files from Google's Android GNSS Logger app
 import datetime, time
 import math
 import re
-import sys,os
+import sys
 
 # Input parameters
 MAX_PRU = 150      # max pseudorange uncertainty (m)
@@ -99,7 +99,7 @@ CONSTELLATION_LETTER = {
 }
 
 # global variables
-clockDiscontinuities = -1
+clockDiscontinuities = {}
 fullbiasnanos = 0
 biasnanos = 0
 
@@ -117,6 +117,7 @@ class GnssLogHeader(object):
 
         self.parameters = {}
         self.fields = {}
+
         with open(filename, 'r') as fh:
 
                 for line in fh:
@@ -615,7 +616,7 @@ def get_satname(measurement):
 def reset_clock():
     global clockDiscontinuities
     
-    clockDiscontinuities = -1
+    clockDiscontinuities = {}
     
 
 def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.0, 
@@ -650,18 +651,20 @@ def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.
     
 
     # force use of biasnano counts if clock discontinuity
-    if clockDiscontinuities != measurement['HardwareClockDiscontinuityCount']:
+    zeroCarrierPhase = False
+    clockDiscontinuity = clockDiscontinuities.get(satname, -1)
+    if clockDiscontinuity != measurement['HardwareClockDiscontinuityCount']:
         #print('Reload biases %.2f: %d %d' % (measurement['utcTimeMillis']/1000,clockDiscontinuities,measurement['HardwareClockDiscontinuityCount']))
         fullbiasnanos = measurement['FullBiasNanos']
         biasnanos = measurement['BiasNanos']
+        if clockDiscontinuity > 0: 
+            zeroCarrierPhase = True # better to ignore this than try and fix it
     elif not fix_bias:
     # Set the fullbiasnanos if not set or if we need to update the fullbiasnanos at each epoch
         fullbiasnanos = measurement['FullBiasNanos']
         biasnanos = measurement['BiasNanos']
-    clockDiscontinuities = measurement['HardwareClockDiscontinuityCount']
+    clockDiscontinuities[satname] = measurement['HardwareClockDiscontinuityCount']
     
-
-
     # Obtain time nanos and bias nanos. Skip if None
     try:
         timenanos = float(measurement['TimeNanos'])
@@ -676,7 +679,7 @@ def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.
 
     # Adjust timestamp to rounded interval
     if timeadj > 0.0:
-        toff = (gpssow / timeadj - int(gpssow / timeadj+0.5)) * timeadj;
+        toff = (gpssow / timeadj - int(gpssow / timeadj + 0.5)) * timeadj;
     else:
         toff = 0.0
 
@@ -763,13 +766,15 @@ def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.
         # Process the accumulated delta range (i.e. carrier phase). This
         # needs to be translated from meters to cycles (i.e. RINEX format
         # specification)
-        if ADRU < MAX_ADRU:
+        if ADRU < MAX_ADRU and zeroCarrierPhase == False:
             cphase = measurement['AccumulatedDeltaRangeMeters'] / wavelength
         else:
             cphase = 0.0
             slip |= 1
-            sys.stderr.write("WARNING: Carrier phase uncertainty exceeds threshold\n")
-
+            if ADRU >= MAX_ADRU: 
+                sys.stderr.write("WARNING: Carrier phase uncertainty exceeds threshold\n")
+            else: # zeroCarrierPhase == True
+                sys.stderr.write("WARNING: Hardware clock discontinuity\n")
     doppler = -measurement['PseudorangeRateMetersPerSecond'] / wavelength
     cn0 = measurement['Cn0DbHz']
     f = str(freq_band)
@@ -798,11 +803,8 @@ def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.
           % (satname, obscode, range, cphase,wavelength,slip, Lstd, Pstd), file = sys.stderr)
 
     slip &= int(slip_mask)
-    if range < 0:
-        sys.stderr.write('Range < 0\n')
-    sys.stderr.write('Final Range: %.2f %.8f\n' %(range, toff))
-   
-    #if cphase > 0 and cphase < 1:
+    
+    range = max(range, 0)  # reject range < 0
         
     
     return { EPOCH_STR : (gpst_epoch, gpssow_adj),
