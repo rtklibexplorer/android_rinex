@@ -36,7 +36,7 @@ def __write_rnx3_header__(ver=3.03, typ="O"):
 
 # -----------------------------------------------------------------------------
 
-def __write_rnx3_header_runby__(pgm="Rokubun", agency="not-available"):
+def __write_rnx3_header_runby__(pgm="Android_Rinex", agency=""):
     """
     Write the runby header line of the Rinex file
     """
@@ -266,7 +266,7 @@ def __write_rnx3_header_end__():
 # ------------------------------------------------------------------------------
 
 
-def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Rokubun", markername="UNKN",
+def write_header(obslist, firstepoch, ver=3.03, typ="O", pgm="Android_Rinex", markername="",
                  markertype="SMARTPHONE", observer="unknown", agency="unknown",
                  rec="unknown", rec_type="unknown", rec_version="unkown",
                  antenna="unknown", ant_type="unknown",

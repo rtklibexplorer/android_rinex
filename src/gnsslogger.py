@@ -99,7 +99,7 @@ CONSTELLATION_LETTER = {
 }
 
 # global variables
-clockDiscontinuities = {}
+clockDiscontinuities = -1
 fullbiasnanos = 0
 biasnanos = 0
 
@@ -616,7 +616,7 @@ def get_satname(measurement):
 def reset_clock():
     global clockDiscontinuities
     
-    clockDiscontinuities = {}
+    clockDiscontinuities = -1
     
 
 def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.0, 
@@ -652,18 +652,17 @@ def process(measurement, model, fix_bias=True, timeadj=1e-7, pseudorange_bias=0.
 
     # force use of biasnano counts if clock discontinuity
     zeroCarrierPhase = False
-    clockDiscontinuity = clockDiscontinuities.get(satname, -1)
-    if clockDiscontinuity != measurement['HardwareClockDiscontinuityCount']:
+    if clockDiscontinuities != measurement['HardwareClockDiscontinuityCount']:
         #print('Reload biases %.2f: %d %d' % (measurement['utcTimeMillis']/1000,clockDiscontinuities,measurement['HardwareClockDiscontinuityCount']))
         fullbiasnanos = measurement['FullBiasNanos']
         biasnanos = measurement['BiasNanos']
-        if clockDiscontinuity > 0: 
-            zeroCarrierPhase = True # better to ignore this than try and fix it
+        if clockDiscontinuities > 0: # skip for initial epoch
+            zeroCarrierPhase = True 
     elif not fix_bias:
     # Set the fullbiasnanos if not set or if we need to update the fullbiasnanos at each epoch
         fullbiasnanos = measurement['FullBiasNanos']
         biasnanos = measurement['BiasNanos']
-    clockDiscontinuities[satname] = measurement['HardwareClockDiscontinuityCount']
+    clockDiscontinuities = measurement['HardwareClockDiscontinuityCount']
     
     # Obtain time nanos and bias nanos. Skip if None
     try:
